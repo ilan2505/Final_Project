@@ -10,6 +10,8 @@ class server:
         self.serverSocket.bind(SERVER_ADDRESS)
         self.serverSocket.listen()
         self.Number_Of_Users = 0
+        self.checksum = {}
+        self.download = {}
         self.clients = {}
         self.UsersName = {}
         self.filesName = os.listdir("./ServerFiles")
@@ -49,6 +51,7 @@ class server:
             try:
                 mes = client.recv(1024)
                 mes = str(mes)
+
                 if self.action == "":
                     if '<connect>' in mes:
                         pass
@@ -58,18 +61,27 @@ class server:
                         pass
                     elif '<set_msg>' in mes:
                         self.sendTo = mes[12:-2]
-                        print(self.sendTo)
                         self.action = "msg"
                     elif 'set_msg_all' in mes:
                         self.action = "msg_all"
                         self.ounmes("Enter your message: ", client)
                     elif '<get_list_file>' in mes:
                         self.ounmes(self.filesName, client)
-                    elif '<download> < test.txt >' in mes:
-                        filename = mes[22:-2]
+                    elif '<checksum>' in mes:
+                        check =mes[13:-2]
+                        self.checksum[client] = int(mes)
+
+                    elif '<download>' in mes:
+                        filename = mes[13:-2]
+                        self.download[client] = filename
                         self.sendfiles(filename, client)
                     elif '<proceed>' in mes:
-                        pass
+                        if self.download[client]:
+                            self.continuesend(self.download[client], client)
+                            del self.download[client]
+                        else:
+                            self.ounmes("you dont have a download", client)
+
                 elif mes != "" and self.action == 'msg_all':
                     self.sendToEveryone(mes)
                     self.action = ""
@@ -90,7 +102,6 @@ class server:
                     self.action = ""
 
             except:
-                print(self.clients)
                 name = self.clients[client]
                 del self.clients[client]
                 del self.UsersName[name]
@@ -104,22 +115,68 @@ class server:
         client.send(str(msg).encode('ascii'))
 
     def sendfiles(self, file_name, client):
-        count = 0
+        count=0
+        send = 0
         s = socket(AF_INET, SOCK_DGRAM)
-        port = 55000
-        buf = 1024
-        addr = (client, port)
-        f = open(file_name, "rb")
-        data = f.read(buf)
+        port = 9999
+        buf = 128
+        addr = ('localhost', port)
+        file = f'./ServerFiles/{file_name}'
+        size = (int)(os.path.getsize(file) / buf)
+        halfSize = size / 2
+        size = (str)(size).encode()
+        s.sendto(size, addr)
+        timeout=False
+        try:
+            f = open(file, "rb")
+            data = f.read(buf)
+            # s.sendto(file, addr)
+            self.ounmes("start download:", client)
+            while data and send < halfSize:
 
-        s.sendto(file_name, addr)
-        s.sendto(data, addr)
-        while data:
-            if (s.sendto(data, addr)):
-                print("sending ...")
-                data = f.read(buf)
+                if s.sendto(data, addr):
+                    print("sending..")
+                    data = f.read(buf)
+                    send = send + 1
+            self.ounmes("download stop", client)
+
+            f.close()
+        except:
+            self.ounmes("file dont exists", client)
         s.close()
-        f.close()
+
+    def continuesend(self, file_name, client):
+        send = 0
+        s = socket(AF_INET, SOCK_DGRAM)
+        port = 9999
+        buf = 1024
+        addr = ('localhost', port)
+        file = f'./ServerFiles/{file_name}'
+        size = (int)(os.path.getsize(file) / 1024)
+        halfSize = size / 2
+        size = (str)(size).encode()
+        s.sendto(size, addr)
+        try:
+            f = open(file, "rb")
+            data = f.read(buf)
+            # s.sendto(file, addr)
+            self.ounmes("continue:", client)
+            while data:
+                if send < halfSize:
+                    data = f.read(buf)
+                    send = send + 1
+                else:
+
+                    if s.sendto(data, addr):
+                        print("sending..")
+                        data = f.read(buf)
+                        send = send + 1
+            self.ounmes("download stop", client)
+
+            f.close()
+        except:
+            self.ounmes("file dont exists", client)
+        s.close()
 
 
 if __name__ == '__main__':
